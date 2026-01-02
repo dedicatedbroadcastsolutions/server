@@ -13,8 +13,10 @@ struct HTTPResponse
     std::string                        body;
 };
 
+// Public functions
 HTTPResponse request(const std::string& host, const std::string& port, const std::string& path);
 
+// Public url_encode for other files
 std::string url_encode(const std::string& str);
 
 }} // namespace caspar::http
