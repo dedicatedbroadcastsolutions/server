@@ -82,6 +82,15 @@ static com_ptr<IDeckLinkIterator> create_iterator()
     return pDecklinkIterator;
 }
 
+static com_ptr<IDeckLinkVideoFrameAncillaryPackets> create_ancillary_packets()
+{
+    CComPtr<IDeckLinkVideoFrameAncillaryPackets> pDecklinkAncillaryPackets;
+    if (FAILED(pDecklinkAncillaryPackets.CoCreateInstance(CLSID_CDeckLinkVideoFrameAncillaryPackets)))
+        CASPAR_THROW_EXCEPTION(not_supported()
+                               << msg_info("Could not create IDeckLinkVideoFrameAncillaryPackets instance."));
+    return pDecklinkAncillaryPackets;
+}
+
 template <typename I, typename T>
 static com_iface_ptr<I> iface_cast(const com_ptr<T>& ptr, bool optional = false)
 {
@@ -164,6 +173,17 @@ static com_ptr<IDeckLinkIterator> create_iterator()
     return wrap_raw<com_ptr>(iterator, true);
 }
 
+static com_ptr<IDeckLinkVideoFrameAncillaryPackets> create_ancillary_packets()
+{
+    IDeckLinkVideoFrameAncillaryPackets* ancillaryPackets = CreateVideoFrameAncillaryPacketsInstance();
+
+    if (ancillaryPackets == nullptr)
+        CASPAR_THROW_EXCEPTION(not_supported()
+                               << msg_info("Could not create IDeckLinkVideoFrameAncillaryPackets instance."));
+
+    return wrap_raw<com_ptr>(ancillaryPackets, true);
+}
+
 template <typename T>
 static REFIID iface_id()
 {
@@ -213,6 +233,11 @@ template <>
 REFIID iface_id<IDeckLinkConfiguration_v10_11>()
 {
     return IID_IDeckLinkConfiguration_v10_11;
+}
+template <>
+REFIID iface_id<IDeckLinkVideoFrameAncillaryPackets>()
+{
+    return IID_IDeckLinkVideoFrameAncillaryPackets;
 }
 
 template <typename I, typename T>

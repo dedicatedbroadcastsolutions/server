@@ -1,6 +1,13 @@
 CasparCG 2.5.0 Stable
 ==========================================
 
+### Important
+
+We recommend running CasparCG 2.5 on CPUs which support AVX2. Officially Chrome claims to require AVX2, and it is required for some of our in-progress HDR support.
+Intel CPUs based on Haswell or later support this, which were first released to consumers in 2013, or 2014 for servers.
+
+Starting with CasparCG 2.6, this will become a requirement
+
 ### Core
 ##### Improvements
 * Initial support for HDR. This is limited to a subset of producers and consumers at this stage.
@@ -10,28 +17,40 @@ CasparCG 2.5.0 Stable
 * Reimplement mixer transforms, to handle routes correctly
 * Support more pixel formats from ffmpeg, to preserve colour accuracy better
 * Support running on headless linux
+* Transitions: Additional behaviours
 ##### Fixes
-* Build with boost 1.85/1.86
+* Build with boost 1.85/1.86/1.87/1.88
+* Build with ffmpeg 7.1
 * Only produce mixed frames on channels which have consumers
 * Routed channels not compositing correctly when channel used a MIXER KEY
 * Handle audio for fractional framerates properly
+* Gracefully exit on SIGINT and SIGTERM
 
 ### Producers
 ##### Improvements
 * FFmpeg: Support loading with a scaling-mode, to configure how clips get fit into the channel
+* FFmpeg: Support more pixel formats without cpu conversion
+* FFmpeg: Enable alpha for webm videos
 * Image: Support loading with a scaling-mode, to configure how images get fit into the channel
 * Image: Replace freeimage with ffmpeg
-* HTML: Update CEF to 131
+* HTML: Update CEF to 142
+* HTML: Support audio
 ##### Fixes
 * Route: Use full field rate when performing i->p channel route
+* HTML: Gracefully handle page load errors
+* HTML: Always set cache path
 
 ### Consumers
 ##### Improvements
 * Screen: Set size and position from AMCP
-* Image: Propogate AMCP parameters from PRINT command
+* Screen: Improve performance
+* Image: Propagate AMCP parameters from PRINT command
+* FFmpeg: Remove unnecessary forced conversion to YUVA422
+* Decklink: Support explicit yuv output (requires AVX2)
+* Decklink: Allow selecting device by hardware persistent id
 
 ##### Fixes
-*
+* FFmpeg: Correctly handle PTS on frame drop
 
 
 CasparCG 2.4.3 Stable
@@ -73,7 +92,7 @@ CasparCG 2.4.1 Stable
 * Fix bad config file examples
 * Fix `casparcg_auto_restart.bat` not starting scanner
 * Revert removal of tbbmalloc, due to notable performance loss on windows
-* Supress some cmake build warnings
+* Suppress some cmake build warnings
 * Build failure when doxygen installed on system
 * Build failures with ffmpeg 7.0
 * Revert RPATH linking changes
@@ -99,7 +118,7 @@ CasparCG 2.4.0 Stable
 
 ### Core
 ##### Improvements
-* Custom resultions can be specified in casparcg.config
+* Custom resolutions can be specified in casparcg.config
 * Interlaced mixer pipeline to ensure field accuracy
 * Preserve unicode characters in console input/output
 * Producers to be run at startup can be defined in casparcg.config
@@ -380,7 +399,7 @@ FFMPEG
  * FFMPEG video filter support.
  * FFMPEG audio filter support.
  * Complex FFMPEG filters (VF, AF).
- * CALL SEEK return actually seeked value.
+ * CALL SEEK return actually sought value.
  * All AMCP options are based on channel format.
  * Misc improvements, cleanup and fixes.
 

@@ -34,9 +34,9 @@ namespace caspar { namespace spl {
  * except in the case of a moved from instance.
  *
  * The default constructor will point the wrapped pointer to a default
- * contructed instance of T.
+ * constructed instance of T.
  *
- * Use the make_unique overloads for perfectly forwarding the contructor
+ * Use the make_unique overloads for perfectly forwarding the constructor
  * arguments of T and creating a unique_ptr to the created T instance.
  */
 template <typename T, typename D = std::default_delete<T>>
@@ -646,6 +646,22 @@ template <typename T>
 shared_ptr<T> make_shared()
 {
     return shared_ptr<T>(std::make_shared<T>());
+}
+
+template <typename T, typename U>
+shared_ptr<T> make_shared()
+{
+    return shared_ptr<T>(std::make_shared<U>());
+}
+template <typename T, typename U, typename P0>
+shared_ptr<T> make_shared(P0&& p0)
+{
+    return shared_ptr<T>(std::make_shared<U>(std::forward<P0>(p0)));
+}
+template <typename T, typename U, typename P0, typename P1>
+shared_ptr<T> make_shared(P0&& p0, P1&& p1)
+{
+    return shared_ptr<T>(std::make_shared<U>(std::forward<P0>(p0), std::forward<P1>(p1)));
 }
 
 template <typename T, typename P0>

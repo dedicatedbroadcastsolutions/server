@@ -30,7 +30,7 @@ port_configuration parse_output_config(const boost::property_tree::wptree&  ptre
                                        const core::video_format_repository& format_repository)
 {
     port_configuration port_config;
-    port_config.device_index = ptree.get(L"device", -1);
+    port_config.device_index = ptree.get(L"device", static_cast<int64_t>(-1));
     port_config.key_only     = ptree.get(L"key-only", port_config.key_only);
 
     auto format_desc_str = ptree.get(L"video-mode", L"");
@@ -53,6 +53,21 @@ port_configuration parse_output_config(const boost::property_tree::wptree&  ptre
 
     return port_config;
 }
+
+vanc_configuration parse_vanc_config(const boost::property_tree::wptree& vanc_tree)
+{
+    vanc_configuration vanc_config;
+
+    vanc_config.enable            = true;
+    vanc_config.op47_line         = vanc_tree.get(L"op47-line", vanc_config.op47_line);
+    vanc_config.op47_line_field2  = vanc_tree.get(L"op47-line-field2", vanc_config.op47_line_field2);
+    vanc_config.enable_op47       = vanc_config.op47_line > 0;
+    vanc_config.scte104_line      = vanc_tree.get(L"scte104-line", vanc_config.scte104_line);
+    vanc_config.enable_scte104    = vanc_config.scte104_line > 0;
+    vanc_config.op47_dummy_header = vanc_tree.get(L"op47-dummy-header", L"");
+
+    return vanc_config;
+};
 
 core::color_space get_color_space(const std::wstring& str)
 {
@@ -97,6 +112,25 @@ configuration parse_xml_config(const boost::property_tree::wptree&  ptree,
     }
     config.wait_for_reference_duration = ptree.get(L"wait-for-reference-duration", config.wait_for_reference_duration);
 
+    {
+        auto is_8bit              = channel_info.depth == common::bit_depth::bit8;
+        auto default_pixel_format = is_8bit ? L"rgba" : L"yuv";
+        auto pixel_format         = ptree.get(L"pixel-format", default_pixel_format);
+        if (pixel_format == L"yuv") {
+            config.pixel_format = configuration::pixel_format_t::yuv;
+        } else if (pixel_format == L"rgba") {
+            config.pixel_format = configuration::pixel_format_t::rgba;
+        } else {
+            CASPAR_THROW_EXCEPTION(user_error() << msg_info(L"Invalid pixel format, must be rgba or yuv"));
+        }
+
+        if (channel_info.depth != common::bit_depth::bit8 &&
+            config.pixel_format == configuration::pixel_format_t::rgba) {
+            CASPAR_THROW_EXCEPTION(user_error()
+                                   << msg_info(L"The decklink consumer only supports rgba output on 8-bit channels"));
+        }
+    }
+
     config.primary = parse_output_config(ptree, format_repository);
     if (config.primary.device_index == -1)
         config.primary.device_index = 1;
@@ -110,7 +144,7 @@ configuration parse_xml_config(const boost::property_tree::wptree&  ptree,
         config.keyer = configuration::keyer_t::external_keyer;
 
         auto key_config         = config.primary; // Copy the primary config
-        key_config.device_index = ptree.get(L"key-device", 0);
+        key_config.device_index = ptree.get(L"key-device", static_cast<int64_t>(0));
         if (key_config.device_index == 0) {
             key_config.device_index = config.primary.device_index + 1;
         }
@@ -132,7 +166,7 @@ configuration parse_xml_config(const boost::property_tree::wptree&  ptree,
     }
 
     config.color_space   = channel_info.default_color_space;
-    auto color_space_str = ptree.get(L"color-space", L"bt709");
+    auto color_space_str = ptree.get(L"color-space", L"");
     if (!color_space_str.empty())
         config.color_space = get_color_space(color_space_str);
 
@@ -142,6 +176,11 @@ configuration parse_xml_config(const boost::property_tree::wptree&  ptree,
         config.hdr_meta.max_dml  = hdr_metadata->get(L"max-dml", config.hdr_meta.max_dml);
         config.hdr_meta.max_fall = hdr_metadata->get(L"max-fall", config.hdr_meta.max_fall);
         config.hdr_meta.max_cll  = hdr_metadata->get(L"max-cll", config.hdr_meta.max_cll);
+    }
+
+    auto vanc = ptree.get_child_optional(L"vanc");
+    if (vanc) {
+        config.vanc = parse_vanc_config(vanc.get());
     }
 
     return config;
@@ -154,7 +193,7 @@ configuration parse_amcp_config(const std::vector<std::wstring>&     params,
     configuration config;
 
     if (params.size() > 1)
-        config.primary.device_index = std::stoi(params.at(1));
+        config.primary.device_index = std::stoll(params.at(1));
 
     if (contains_param(L"INTERNAL_KEY", params)) {
         config.keyer = configuration::keyer_t::internal_keyer;

@@ -72,6 +72,33 @@ struct Frame
     int64_t                  frame_count = 0;
 };
 
+AVPixelFormat get_pix_fmt_with_alpha(AVPixelFormat fmt)
+{
+    switch (fmt) {
+        case AV_PIX_FMT_YUV420P:
+            return AV_PIX_FMT_YUVA420P;
+        case AV_PIX_FMT_YUV422P:
+            return AV_PIX_FMT_YUVA422P;
+        case AV_PIX_FMT_YUV444P:
+            return AV_PIX_FMT_YUVA444P;
+        default:
+            break;
+    }
+    return fmt;
+}
+
+const AVCodec* get_decoder(AVCodecID codec_id)
+{
+    // enforce use of libvpx for vp8 and vp9 codecs to be able
+    // to decode webm files with alpha channel
+    const AVCodec* result = nullptr;
+    if (codec_id == AV_CODEC_ID_VP9)
+        result = avcodec_find_decoder_by_name("libvpx-vp9");
+    else if (codec_id == AV_CODEC_ID_VP8)
+        result = avcodec_find_decoder_by_name("libvpx");
+    return result != nullptr ? result : avcodec_find_decoder(codec_id);
+}
+
 // TODO (fix) Handle ts discontinuities.
 // TODO (feat) Forward options.
 
@@ -125,7 +152,8 @@ class Decoder
     explicit Decoder(AVStream* stream)
         : st(stream)
     {
-        const auto codec = avcodec_find_decoder(stream->codecpar->codec_id);
+        const auto codec = get_decoder(stream->codecpar->codec_id);
+
         if (!codec) {
             FF_RET(AVERROR_DECODER_NOT_FOUND, "avcodec_find_decoder");
         }
@@ -139,6 +167,12 @@ class Decoder
 
         FF(avcodec_parameters_to_context(ctx.get(), stream->codecpar));
 
+        if (stream->metadata != NULL) {
+            auto entry = av_dict_get(stream->metadata, "alpha_mode", NULL, AV_DICT_MATCH_CASE);
+            if (entry != NULL && entry->value != NULL && *entry->value == '1')
+                ctx->pix_fmt = get_pix_fmt_with_alpha(ctx->pix_fmt);
+        }
+
         int thread_count = env::properties().get(L"configuration.ffmpeg.producer.threads", 0);
         FF(av_opt_set_int(ctx.get(), "threads", thread_count, 0));
 
@@ -148,18 +182,6 @@ class Decoder
             ctx->framerate           = av_guess_frame_rate(nullptr, stream, nullptr);
             ctx->sample_aspect_ratio = av_guess_sample_aspect_ratio(nullptr, stream, nullptr);
         } else if (ctx->codec_type == AVMEDIA_TYPE_AUDIO) {
-#if !(FFMPEG_NEW_CHANNEL_LAYOUT)
-            if (!ctx->channel_layout && ctx->channels) {
-                ctx->channel_layout = av_get_default_channel_layout(ctx->channels);
-            }
-            if (!ctx->channels && ctx->channel_layout) {
-                ctx->channels = av_get_channel_layout_nb_channels(ctx->channel_layout);
-            }
-#endif
-        }
-
-        if (codec->capabilities & AV_CODEC_CAP_SLICE_THREADS) {
-            ctx->thread_type = FF_THREAD_SLICE;
         }
 
         FF(avcodec_open2(ctx.get(), codec, nullptr));
@@ -193,25 +215,38 @@ class Decoder
                     } else {
                         FF_RET(ret, "avcodec_receive_frame");
 
+                        // TODO: Maybe Fixed in:
+                        // https://github.com/FFmpeg/FFmpeg/commit/33203a08e0a26598cb103508327a1dc184b27bc6
                         // NOTE This is a workaround for DVCPRO HD.
+#if LIBAVCODEC_VERSION_MAJOR < 61
                         if (av_frame->width > 1024 && av_frame->interlaced_frame) {
                             av_frame->top_field_first = 1;
                         }
+#else
+                        if (av_frame->width > 1024 && (av_frame->flags & AV_FRAME_FLAG_INTERLACED)) {
+                            av_frame->flags |= AV_FRAME_FLAG_TOP_FIELD_FIRST;
+                        }
+#endif
 
                         // TODO (fix) is this always best?
                         av_frame->pts = av_frame->best_effort_timestamp;
 
-#if LIBAVUTIL_VERSION_MAJOR < 58
-                        auto duration_pts = av_frame->pkt_duration;
-#else
                         auto duration_pts = av_frame->duration;
-#endif
                         if (duration_pts <= 0) {
                             if (ctx->codec_type == AVMEDIA_TYPE_VIDEO) {
+#if LIBAVCODEC_VERSION_MAJOR < 62
+                                const int ticks_per_frame = ctx->ticks_per_frame;
+#else
+                                // https://github.com/FFmpeg/FFmpeg/commit/e930b834a928546f9cbc937f6633709053448232#diff-115616f8a2b59cab3aac4e7f4c8c31e69e94e7fcfa339b9f65b0bf34308aa80fR682
+                                const int ticks_per_frame =
+                                    (ctx->codec_descriptor && (ctx->codec_descriptor->props & AV_CODEC_PROP_FIELDS))
+                                        ? 2
+                                        : 1;
+#endif
                                 const auto ticks = av_stream_get_parser(st) ? av_stream_get_parser(st)->repeat_pict + 1
-                                                                            : ctx->ticks_per_frame;
+                                                                            : ticks_per_frame;
                                 duration_pts     = static_cast<int64_t>(AV_TIME_BASE) * ctx->framerate.den * ticks /
-                                               ctx->framerate.num / ctx->ticks_per_frame;
+                                               ctx->framerate.num / ticks_per_frame;
                                 duration_pts = av_rescale_q(duration_pts, {1, AV_TIME_BASE}, st->time_base);
                             } else if (ctx->codec_type == AVMEDIA_TYPE_AUDIO) {
                                 duration_pts = av_rescale_q(av_frame->nb_samples, {1, ctx->sample_rate}, st->time_base);
@@ -342,12 +377,8 @@ struct Filter
             // Find first audio stream to get a time_base for the first_pts calculation
             AVRational tb = {1, format_desc.audio_sample_rate};
             for (auto n = 0U; n < input->nb_streams; ++n) {
-                const auto st = input->streams[n];
-#if FFMPEG_NEW_CHANNEL_LAYOUT
+                const auto st             = input->streams[n];
                 const auto codec_channels = st->codecpar->ch_layout.nb_channels;
-#else
-                const auto codec_channels = st->codecpar->channels;
-#endif
                 if (st->codecpar->codec_type == AVMEDIA_TYPE_AUDIO && codec_channels > 0) {
                     tb = {1, st->codecpar->sample_rate};
                     break;
@@ -399,11 +430,7 @@ struct Filter
         for (auto n = 0U; n < input->nb_streams; ++n) {
             const auto st = input->streams[n];
 
-#if FFMPEG_NEW_CHANNEL_LAYOUT
             const auto codec_channels = st->codecpar->ch_layout.nb_channels;
-#else
-            const auto codec_channels = st->codecpar->channels;
-#endif
             if (st->codecpar->codec_type == AVMEDIA_TYPE_AUDIO && codec_channels == 0) {
                 continue;
             }
@@ -508,12 +535,8 @@ struct Filter
                     FF(avfilter_link(source, 0, cur->filter_ctx, cur->pad_idx));
                     sources.emplace(index, source);
                 } else if (st->codec_type == AVMEDIA_TYPE_AUDIO) {
-#if FFMPEG_NEW_CHANNEL_LAYOUT
                     char channel_layout[128];
                     FF(av_channel_layout_describe(&st->ch_layout, channel_layout, sizeof(channel_layout)));
-#else
-                    const auto channel_layout = st->channel_layout;
-#endif
 
                     auto args = (boost::format("time_base=%d/%d:sample_rate=%d:sample_fmt=%s:channel_layout=%#x") %
                                  st->pkt_timebase.num % st->pkt_timebase.den % st->sample_rate %
@@ -548,6 +571,8 @@ struct Filter
                                               AV_PIX_FMT_RGBA,
                                               AV_PIX_FMT_ABGR,
                                               AV_PIX_FMT_YUV444P,
+                                              AV_PIX_FMT_YUV444P10,
+                                              AV_PIX_FMT_YUV444P12,
                                               AV_PIX_FMT_YUV422P,
                                               AV_PIX_FMT_YUV422P10,
                                               AV_PIX_FMT_YUV422P12,

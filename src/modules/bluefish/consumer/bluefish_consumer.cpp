@@ -521,7 +521,7 @@ struct bluefish_consumer
                     if (blue_->set_card_property32(MR2_ROUTING, routing_value))
                         CASPAR_THROW_EXCEPTION(caspar_exception() << msg_info("Failed to MR 2 routing."));
 
-                    if (is_epoch_neutron_1i2o_card(*blue_)) // Neutron cards require setting the Genlock conector to
+                    if (is_epoch_neutron_1i2o_card(*blue_)) // Neutron cards require setting the Genlock connector to
                                                             // Aux to enable them to do Dual-Link
                     {
                         ULONG genLockSource = BlueGenlockAux;
@@ -850,7 +850,9 @@ struct bluefish_consumer_proxy : public core::frame_consumer
     }
 
     // frame_consumer
-    void initialize(const core::video_format_desc& format_desc, const core::channel_info& channel_info, int port_index) override
+    void initialize(const core::video_format_desc& format_desc,
+                    const core::channel_info&      channel_info,
+                    int                            port_index) override
     {
         format_desc_ = format_desc;
         executor_.invoke([=] {
