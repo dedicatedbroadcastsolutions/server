@@ -560,10 +560,11 @@ struct ffmpeg_consumer : public core::frame_consumer
                             try {
                                 FF(av_interleaved_write_frame(oc, pkt.get()));
                             } catch (const ffmpeg_error_t& e) {
-                                // Ignore broken pipe and connection reset errors during frame writing
+                                // Handle broken pipe and connection reset errors during frame writing
+                                // These occur when the remote RTMP server closes or resets the connection
                                 auto errn = boost::get_error_info<ffmpeg_errn_info>(e);
                                 if (errn && (*errn == AVERROR(EPIPE) || *errn == AVERROR(ECONNRESET))) {
-                                    CASPAR_LOG(debug) << "Stream connection closed, stopping packet writing";
+                                    CASPAR_LOG(warning) << L"FFmpeg consumer connection lost - remote server may have closed connection";
                                     break;
                                 } else {
                                     throw;
