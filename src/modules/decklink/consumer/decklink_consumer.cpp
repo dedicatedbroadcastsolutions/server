@@ -154,7 +154,9 @@ void set_keyer(const com_iface_ptr<IDeckLinkProfileAttributes>& attributes,
                configuration::keyer_t                           keyer,
                const std::wstring&                              print)
 {
-    if (keyer == configuration::keyer_t::internal_keyer) {
+    if (keyer == configuration::keyer_t::disabled_keyer) {
+        CASPAR_LOG(info) << print << L" Keyer disabled.";
+    } else if (keyer == configuration::keyer_t::internal_keyer) {
         BOOL value = true;
         if (SUCCEEDED(attributes->GetFlag(BMDDeckLinkSupportsInternalKeying, &value)) && !value)
             CASPAR_LOG(error) << print << L" Failed to enable internal keyer.";
