@@ -201,7 +201,11 @@ class renderer_application
         command_line->AppendSwitch("disable-background-networking");
         command_line->AppendSwitch("disable-component-update");
         command_line->AppendSwitch("disable-sync");
-        command_line->AppendSwitch("disable-features=OptimizationHints");
+        command_line->AppendSwitch("disable-default-apps");
+        command_line->AppendSwitch("disable-extensions");
+        command_line->AppendSwitch("disable-breakpad");
+        command_line->AppendSwitch("no-default-browser-check");
+        command_line->AppendSwitch("disable-features=OptimizationHints,GCM");
         command_line->AppendSwitchWithValue("gcm-channel-status", "2");
 
         if (process_type.empty() && !enable_gpu_) {
