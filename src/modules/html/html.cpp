@@ -256,12 +256,6 @@ void init(const core::module_dependencies& dependencies)
         settings.no_sandbox                   = true;
         settings.remote_debugging_port        = env::properties().get(L"configuration.html.remote-debugging-port", 0);
         settings.windowless_rendering_enabled = true;
-        
-        // Disable background services including GCM to prevent deprecated endpoint errors
-        settings.background_color = 0;
-        
-        // Suppress CEF error logging to hide GCM deprecated endpoint errors
-        settings.log_severity = LOGSEVERITY_DISABLE;
 
         auto cache_path = env::properties().get(L"configuration.html.cache-path", L"cef-cache");
         if (!cache_path.empty()) {
