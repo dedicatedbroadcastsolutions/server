@@ -236,6 +236,13 @@ void init(const core::module_dependencies& dependencies)
 {
     dependencies.producer_registry->register_producer_factory(L"HTML Producer", html::create_producer);
 
+    // Set environment variable to disable GCM before CEF initialization
+    #ifdef __unix__
+    setenv("GOOGLE_API_KEY", "no", 1);
+    setenv("GOOGLE_DEFAULT_CLIENT_ID", "no", 1);
+    setenv("GOOGLE_DEFAULT_CLIENT_SECRET", "no", 1);
+    #endif
+
     CefMainArgs main_args;
     g_cef_executor = std::make_unique<executor>(L"cef");
     bool result    = g_cef_executor->invoke([&] {
@@ -249,6 +256,9 @@ void init(const core::module_dependencies& dependencies)
         settings.no_sandbox                   = true;
         settings.remote_debugging_port        = env::properties().get(L"configuration.html.remote-debugging-port", 0);
         settings.windowless_rendering_enabled = true;
+        
+        // Disable background services including GCM to prevent deprecated endpoint errors
+        settings.background_color = 0;
 
         auto cache_path = env::properties().get(L"configuration.html.cache-path", L"cef-cache");
         if (!cache_path.empty()) {
