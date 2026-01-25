@@ -205,8 +205,11 @@ class renderer_application
         command_line->AppendSwitch("disable-extensions");
         command_line->AppendSwitch("disable-breakpad");
         command_line->AppendSwitch("no-default-browser-check");
-        command_line->AppendSwitch("disable-features=OptimizationHints,GCM");
+        command_line->AppendSwitch("disable-features=OptimizationHints,GCM,OnDeviceModelService,Optimization,TranslateUI");
         command_line->AppendSwitchWithValue("gcm-channel-status", "2");
+        
+        // Disable ML/AI features that cause GPU adapter errors and potential crashes
+        command_line->AppendSwitch("disable-machine-learning-model-loader");
 
         if (process_type.empty() && !enable_gpu_) {
             // This gives more performance, but disabled gpu effects. Without it a single 1080p producer cannot be run
