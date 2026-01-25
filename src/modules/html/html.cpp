@@ -197,9 +197,12 @@ class renderer_application
         command_line->AppendSwitchWithValue("autoplay-policy", "no-user-gesture-required");
         command_line->AppendSwitchWithValue("remote-allow-origins", "*");
         
-        // Disable GCM (Google Cloud Messaging) to prevent deprecated endpoint errors
+        // Disable GCM (Google Cloud Messaging) and related services to prevent deprecated endpoint errors
         command_line->AppendSwitch("disable-background-networking");
         command_line->AppendSwitch("disable-component-update");
+        command_line->AppendSwitch("disable-sync");
+        command_line->AppendSwitch("disable-features=OptimizationHints");
+        command_line->AppendSwitchWithValue("gcm-channel-status", "2");
 
         if (process_type.empty() && !enable_gpu_) {
             // This gives more performance, but disabled gpu effects. Without it a single 1080p producer cannot be run
