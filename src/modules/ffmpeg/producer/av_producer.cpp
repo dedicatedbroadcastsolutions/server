@@ -411,8 +411,20 @@ struct Filter
                 FF_RET(AVERROR(ENOMEM), "avfilter_graph_alloc");
             }
 
+
             CASPAR_SCOPE_EXIT
             {
+                CASPAR_LOG(debug) << "[Filter] Flushing buffersink before avfilter_graph_free graph2=" << (void*)graph2;
+                if (sink) {
+                    AVFrame* flush_frame = av_frame_alloc();
+                    if (flush_frame) {
+                        int ret = 0;
+                        do {
+                            ret = av_buffersink_get_frame(sink, flush_frame);
+                        } while (ret >= 0);
+                        av_frame_free(&flush_frame);
+                    }
+                }
                 CASPAR_LOG(debug) << "[Filter] avfilter_graph_free graph2=" << (void*)graph2;
                 avfilter_graph_free(&graph2);
                 avfilter_inout_free(&inputs);

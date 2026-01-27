@@ -140,8 +140,19 @@ struct Stream
         AVFilterInOut* outputs = nullptr;
         AVFilterInOut* inputs  = nullptr;
 
+
         CASPAR_SCOPE_EXIT
         {
+            if (sink) {
+                AVFrame* flush_frame = av_frame_alloc();
+                if (flush_frame) {
+                    int ret = 0;
+                    do {
+                        ret = av_buffersink_get_frame(sink, flush_frame);
+                    } while (ret >= 0);
+                    av_frame_free(&flush_frame);
+                }
+            }
             avfilter_inout_free(&inputs);
             avfilter_inout_free(&outputs);
         };
