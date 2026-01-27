@@ -207,37 +207,15 @@ struct Stream
         }
 
         if (codec->type == AVMEDIA_TYPE_VIDEO) {
+            // List of allowed pixel formats as a string for FFmpeg 8+
+            const char* pix_fmts_str = "pix_fmts=rgb24|bgr24|bgra|argb|rgba|abgr|yuv444p|yuv444p10le|yuv444p12le|yuv422p|yuv422p10le|yuv422p12le|yuv420p|yuv420p10le|yuv420p12le|yuv410p|yuva444p|yuva422p|yuva420p|uyvy422|gbrp|gbrp10le|gbrp12le|gbrp16le|gbrap|gbrap16le";
             FF(avfilter_graph_create_filter(
-                &sink, avfilter_get_by_name("buffersink"), "out", nullptr, nullptr, graph.get()));
-
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4245)
-#endif
-            // TODO codec->profiles
-            // TODO FF(av_opt_set_int_list(sink, "framerates", codec->supported_framerates, { 0, 0 },
-            // AV_OPT_SEARCH_CHILDREN));
-            FF(av_opt_set_int_list(sink, "pix_fmts", codec->pix_fmts, -1, AV_OPT_SEARCH_CHILDREN));
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
+                &sink, avfilter_get_by_name("buffersink"), "out", pix_fmts_str, nullptr, graph.get()));
         } else if (codec->type == AVMEDIA_TYPE_AUDIO) {
+            // Set sample_fmts and sample_rates at creation for FFmpeg 8+
+            std::string abuffersink_args = "sample_fmts=s32|sample_rates=44100|all_channel_counts=1";
             FF(avfilter_graph_create_filter(
-                &sink, avfilter_get_by_name("abuffersink"), "out", nullptr, nullptr, graph.get()));
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4245)
-#endif
-            // TODO codec->profiles
-            FF(av_opt_set_int_list(sink, "sample_fmts", codec->sample_fmts, -1, AV_OPT_SEARCH_CHILDREN));
-            FF(av_opt_set_int_list(sink, "sample_rates", codec->supported_samplerates, 0, AV_OPT_SEARCH_CHILDREN));
-
-            // TODO: need to translate codec->ch_layouts into something that can be passed via av_opt_set_*
-            // FF(av_opt_set_chlayout(sink, "ch_layouts", codec->ch_layouts, AV_OPT_SEARCH_CHILDREN));
-
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
+                &sink, avfilter_get_by_name("abuffersink"), "out", abuffersink_args.c_str(), nullptr, graph.get()));
         } else {
             CASPAR_THROW_EXCEPTION(ffmpeg_error_t()
                                    << boost::errinfo_errno(EINVAL) << msg_info_t("invalid output media type"));
