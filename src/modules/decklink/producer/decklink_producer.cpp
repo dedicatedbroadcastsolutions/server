@@ -198,8 +198,13 @@ struct Filter
                         .str();
                 auto name = (boost::format("in_%d") % 0).str();
 
+                // FFmpeg 8: Set colorspace and range via AVDictionary as well as args string
+                AVDictionary* buffer_opts = nullptr;
+                av_dict_set(&buffer_opts, "colorspace", "bt709", 0);
+                av_dict_set(&buffer_opts, "range", "tv", 0);
                 FF(avfilter_graph_create_filter(
-                    &video_source, avfilter_get_by_name("buffer"), name.c_str(), args.c_str(), nullptr, graph.get()));
+                    &video_source, avfilter_get_by_name("buffer"), name.c_str(), args.c_str(), buffer_opts, graph.get()));
+                av_dict_free(&buffer_opts);
                 FF(avfilter_link(video_source, 0, cur->filter_ctx, cur->pad_idx));
             } else if (filter_type == AVMEDIA_TYPE_AUDIO) {
                 if (audio_source) {
