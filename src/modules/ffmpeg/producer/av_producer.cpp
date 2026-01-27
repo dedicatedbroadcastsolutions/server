@@ -353,6 +353,7 @@ struct Filter
            AVMediaType                    media_type,
            const core::video_format_desc& format_desc)
     {
+        CASPAR_LOG(debug) << "[Filter] Enter constructor, media_type=" << (media_type == AVMEDIA_TYPE_VIDEO ? "video" : "audio") << ", filter_spec=" << filter_spec;
         if (media_type == AVMEDIA_TYPE_VIDEO) {
             if (filter_spec.empty()) {
                 filter_spec = "null";
@@ -369,6 +370,7 @@ struct Filter
                             (format_desc.framerate.numerator() * format_desc.field_count) %
                             format_desc.framerate.denominator() % (static_cast<double>(start_time) / AV_TIME_BASE))
                                .str();
+            CASPAR_LOG(debug) << "[Filter] Video filter_spec after append: " << filter_spec;
         } else if (media_type == AVMEDIA_TYPE_AUDIO) {
             if (filter_spec.empty()) {
                 filter_spec = "anull";
@@ -388,6 +390,7 @@ struct Filter
                                           "asetnsamples=n=1024:p=0") %
                             av_rescale_q(start_time, TIME_BASE_Q, tb) % format_desc.audio_sample_rate)
                                .str();
+            CASPAR_LOG(debug) << "[Filter] Audio filter_spec after append: " << filter_spec;
         }
 
         AVFilterInOut* outputs = nullptr;
@@ -395,6 +398,7 @@ struct Filter
 
         CASPAR_SCOPE_EXIT
         {
+            CASPAR_LOG(debug) << "[Filter] avfilter_inout_free inputs=" << (void*)inputs << ", outputs=" << (void*)outputs;
             avfilter_inout_free(&inputs);
             avfilter_inout_free(&outputs);
         };
@@ -409,6 +413,7 @@ struct Filter
 
             CASPAR_SCOPE_EXIT
             {
+                CASPAR_LOG(debug) << "[Filter] avfilter_graph_free graph2=" << (void*)graph2;
                 avfilter_graph_free(&graph2);
                 avfilter_inout_free(&inputs);
                 avfilter_inout_free(&outputs);
@@ -478,6 +483,8 @@ struct Filter
             FF_RET(AVERROR(ENOMEM), "avfilter_graph_alloc");
         }
 
+        CASPAR_LOG(debug) << "[Filter] Allocated main filter graph: " << (void*)graph.get();
+
         // FFmpeg 8: Create sink filter and set options before parsing/creating other filters
         if (media_type == AVMEDIA_TYPE_VIDEO) {
             // List of allowed pixel formats as strings
@@ -495,8 +502,10 @@ struct Filter
             }
             AVDictionary* options = nullptr;
             av_dict_set(&options, "pix_fmts", pix_fmts_str.c_str(), 0);
+            CASPAR_LOG(debug) << "[Filter] Creating video buffersink, options=" << (void*)options << ", pix_fmts_str=" << pix_fmts_str;
             FF(avfilter_graph_create_filter(
                 &sink, avfilter_get_by_name("buffersink"), "out", nullptr, options, graph.get()));
+            CASPAR_LOG(debug) << "[Filter] Created video buffersink: " << (void*)sink;
             av_dict_free(&options);
         } else if (media_type == AVMEDIA_TYPE_AUDIO) {
             static const char* sample_fmt_names[] = { "s32", nullptr };
@@ -505,8 +514,10 @@ struct Filter
             av_dict_set(&options, "sample_fmts", sample_fmt_names[0], 0);
             av_dict_set(&options, "all_channel_counts", "1", 0);
             av_dict_set(&options, "sample_rates", "44100", 0);
+            CASPAR_LOG(debug) << "[Filter] Creating audio abuffersink, options=" << (void*)options;
             FF(avfilter_graph_create_filter(
                 &sink, avfilter_get_by_name("abuffersink"), "out", nullptr, options, graph.get()));
+            CASPAR_LOG(debug) << "[Filter] Created audio abuffersink: " << (void*)sink;
             av_dict_free(&options);
         } else {
             CASPAR_THROW_EXCEPTION(ffmpeg_error_t()
@@ -514,6 +525,8 @@ struct Filter
         }
 
         FF(avfilter_graph_parse2(graph.get(), filter_spec.c_str(), &inputs, &outputs));
+
+        CASPAR_LOG(debug) << "[Filter] Parsed filter graph: " << (void*)graph.get() << ", sink=" << (void*)sink;
 
         // inputs
         {
@@ -554,6 +567,8 @@ struct Filter
                                                 .str();
                     auto name = (boost::format("in_%d") % index).str();
 
+                    CASPAR_LOG(debug) << "[Filter] Creating video buffer source: " << name << ", args=" << args;
+
                     if (st->sample_aspect_ratio.num > 0 && st->sample_aspect_ratio.den > 0) {
                         args +=
                             (boost::format(":sar=%d/%d") % st->sample_aspect_ratio.num % st->sample_aspect_ratio.den)
@@ -567,6 +582,7 @@ struct Filter
                     AVFilterContext* source = nullptr;
                     FF(avfilter_graph_create_filter(
                         &source, avfilter_get_by_name("buffer"), name.c_str(), args.c_str(), nullptr, graph.get()));
+                    CASPAR_LOG(debug) << "[Filter] Created video buffer source: " << (void*)source;
                     FF(avfilter_link(source, 0, cur->filter_ctx, cur->pad_idx));
                     sources.emplace(index, source);
                 } else if (st->codec_type == AVMEDIA_TYPE_AUDIO) {
@@ -579,9 +595,12 @@ struct Filter
                                     .str();
                     auto name = (boost::format("in_%d") % index).str();
 
+                    CASPAR_LOG(debug) << "[Filter] Creating audio buffer source: " << name << ", args=" << args;
+
                     AVFilterContext* source = nullptr;
                     FF(avfilter_graph_create_filter(
                         &source, avfilter_get_by_name("abuffer"), name.c_str(), args.c_str(), nullptr, graph.get()));
+                    CASPAR_LOG(debug) << "[Filter] Created audio buffer source: " << (void*)source;
                     FF(avfilter_link(source, 0, cur->filter_ctx, cur->pad_idx));
                     sources.emplace(index, source);
                 } else {
@@ -612,7 +631,11 @@ struct Filter
 
         FF(avfilter_graph_config(graph.get(), nullptr));
 
+        CASPAR_LOG(debug) << "[Filter] Configured filter graph: " << (void*)graph.get();
+
         CASPAR_LOG(debug) << avfilter_graph_dump(graph.get(), nullptr);
+
+        CASPAR_LOG(debug) << "[Filter] Leaving constructor, graph=" << (void*)graph.get() << ", sink=" << (void*)sink;
     }
 
     bool operator()(int nb_samples = -1)
