@@ -147,10 +147,35 @@ struct Stream
         };
 
         graph = std::shared_ptr<AVFilterGraph>(avfilter_graph_alloc(),
-                                               [](AVFilterGraph* ptr) { avfilter_graph_free(&ptr); });
+	[](AVFilterGraph* ptr) { avfilter_graph_free(&ptr); });
 
         if (!graph) {
             FF_RET(AVERROR(ENOMEM), "avfilter_graph_alloc");
+        }
+
+        // FFmpeg 8: Create sink filter and set options before parsing/creating other filters
+        if (codec->type == AVMEDIA_TYPE_VIDEO) {
+            static const AVPixelFormat pix_fmts[] = {
+                AV_PIX_FMT_RGB24, AV_PIX_FMT_BGR24, AV_PIX_FMT_BGRA, AV_PIX_FMT_ARGB, AV_PIX_FMT_RGBA, AV_PIX_FMT_ABGR,
+                AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUV444P10LE, AV_PIX_FMT_YUV444P12LE, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUV422P10LE,
+                AV_PIX_FMT_YUV422P12LE, AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV420P10LE, AV_PIX_FMT_YUV420P12LE, AV_PIX_FMT_YUV410P,
+                AV_PIX_FMT_YUVA444P, AV_PIX_FMT_YUVA422P, AV_PIX_FMT_YUVA420P, AV_PIX_FMT_UYVY422, AV_PIX_FMT_GBRP,
+                AV_PIX_FMT_GBRP10LE, AV_PIX_FMT_GBRP12LE, AV_PIX_FMT_GBRP16LE, AV_PIX_FMT_GBRAP, AV_PIX_FMT_GBRAP16LE, AV_PIX_FMT_NONE
+            };
+            FF(avfilter_graph_create_filter(
+                &sink, avfilter_get_by_name("buffersink"), "out", nullptr, nullptr, graph.get()));
+            FF(av_opt_set_int_list(sink, "pix_fmts", pix_fmts, -1, AV_OPT_SEARCH_CHILDREN));
+        } else if (codec->type == AVMEDIA_TYPE_AUDIO) {
+            static const AVSampleFormat sample_fmts[] = { AV_SAMPLE_FMT_S32, AV_SAMPLE_FMT_NONE };
+            static const int sample_rates[] = { 44100, -1 };
+            FF(avfilter_graph_create_filter(
+                &sink, avfilter_get_by_name("abuffersink"), "out", nullptr, nullptr, graph.get()));
+            FF(av_opt_set_int_list(sink, "sample_fmts", sample_fmts, -1, AV_OPT_SEARCH_CHILDREN));
+            FF(av_opt_set_int(sink, "all_channel_counts", 1, AV_OPT_SEARCH_CHILDREN));
+            FF(av_opt_set_int_list(sink, "sample_rates", sample_rates, -1, AV_OPT_SEARCH_CHILDREN));
+        } else {
+            CASPAR_THROW_EXCEPTION(ffmpeg_error_t()
+                                   << boost::errinfo_errno(EINVAL) << msg_info_t("invalid output media type"));
         }
 
         if (codec->type == AVMEDIA_TYPE_VIDEO) {
@@ -206,29 +231,7 @@ struct Stream
             }
         }
 
-        if (codec->type == AVMEDIA_TYPE_VIDEO) {
-            static const AVPixelFormat pix_fmts[] = {
-                AV_PIX_FMT_RGB24, AV_PIX_FMT_BGR24, AV_PIX_FMT_BGRA, AV_PIX_FMT_ARGB, AV_PIX_FMT_RGBA, AV_PIX_FMT_ABGR,
-                AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUV444P10LE, AV_PIX_FMT_YUV444P12LE, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUV422P10LE,
-                AV_PIX_FMT_YUV422P12LE, AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV420P10LE, AV_PIX_FMT_YUV420P12LE, AV_PIX_FMT_YUV410P,
-                AV_PIX_FMT_YUVA444P, AV_PIX_FMT_YUVA422P, AV_PIX_FMT_YUVA420P, AV_PIX_FMT_UYVY422, AV_PIX_FMT_GBRP,
-                AV_PIX_FMT_GBRP10LE, AV_PIX_FMT_GBRP12LE, AV_PIX_FMT_GBRP16LE, AV_PIX_FMT_GBRAP, AV_PIX_FMT_GBRAP16LE, AV_PIX_FMT_NONE
-            };
-            FF(avfilter_graph_create_filter(
-                &sink, avfilter_get_by_name("buffersink"), "out", nullptr, nullptr, graph.get()));
-            FF(av_opt_set_int_list(sink, "pix_fmts", pix_fmts, -1, AV_OPT_SEARCH_CHILDREN));
-        } else if (codec->type == AVMEDIA_TYPE_AUDIO) {
-            static const AVSampleFormat sample_fmts[] = { AV_SAMPLE_FMT_S32, AV_SAMPLE_FMT_NONE };
-            static const int sample_rates[] = { 44100, -1 };
-            FF(avfilter_graph_create_filter(
-                &sink, avfilter_get_by_name("abuffersink"), "out", nullptr, nullptr, graph.get()));
-            FF(av_opt_set_int_list(sink, "sample_fmts", sample_fmts, -1, AV_OPT_SEARCH_CHILDREN));
-            FF(av_opt_set_int(sink, "all_channel_counts", 1, AV_OPT_SEARCH_CHILDREN));
-            FF(av_opt_set_int_list(sink, "sample_rates", sample_rates, -1, AV_OPT_SEARCH_CHILDREN));
-        } else {
-            CASPAR_THROW_EXCEPTION(ffmpeg_error_t()
-                                   << boost::errinfo_errno(EINVAL) << msg_info_t("invalid output media type"));
-        }
+        // Removed redundant sink filter creation and option setting (now done above, before parsing/creating other filters)
 
         {
             const auto cur = outputs;
