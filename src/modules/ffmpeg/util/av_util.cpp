@@ -81,21 +81,37 @@ core::mutable_frame make_frame(void*                            tag,
         [&]() {
             if (audio) {
                 const int channel_count = 16;
-                frame.audio_data()      = std::vector<int32_t>(audio->nb_samples * channel_count, 0);
+                frame.audio_data() = std::vector<int32_t>(audio->nb_samples * channel_count, 0);
 
                 auto source_channel_count = audio->ch_layout.nb_channels;
-                if (source_channel_count == channel_count) {
-                    std::memcpy(frame.audio_data().data(),
-                                reinterpret_cast<int32_t*>(audio->data[0]),
-                                sizeof(int32_t) * channel_count * audio->nb_samples);
-                } else {
-                    // This isn't pretty, but some callers may not provide 16 channels
+                if (source_channel_count <= 0 || audio->nb_samples <= 0)
+                    return;
 
-                    auto dst = frame.audio_data().data();
-                    auto src = reinterpret_cast<int32_t*>(audio->data[0]);
-                    for (auto i = 0; i < audio->nb_samples; i++) {
-                        for (auto j = 0; j < std::min(channel_count, source_channel_count); ++j) {
-                            dst[i * channel_count + j] = src[i * source_channel_count + j];
+                bool is_planar = av_sample_fmt_is_planar((AVSampleFormat)audio->format);
+                int bytes_per_sample = av_get_bytes_per_sample((AVSampleFormat)audio->format);
+                if (bytes_per_sample != sizeof(int32_t)) {
+                    // Unexpected format, skip copy
+                    return;
+                }
+
+                auto dst = frame.audio_data().data();
+                if (!is_planar) {
+                    // Packed: all channels interleaved in data[0]
+                    auto src = reinterpret_cast<const int32_t*>(audio->data[0]);
+                    int src_channels = source_channel_count;
+                    int copy_channels = std::min(channel_count, src_channels);
+                    for (int i = 0; i < audio->nb_samples; ++i) {
+                        for (int j = 0; j < copy_channels; ++j) {
+                            dst[i * channel_count + j] = src[i * src_channels + j];
+                        }
+                    }
+                } else {
+                    // Planar: each channel in data[c]
+                    int copy_channels = std::min(channel_count, source_channel_count);
+                    for (int ch = 0; ch < copy_channels; ++ch) {
+                        auto src = reinterpret_cast<const int32_t*>(audio->data[ch]);
+                        for (int i = 0; i < audio->nb_samples; ++i) {
+                            dst[i * channel_count + ch] = src[i];
                         }
                     }
                 }
