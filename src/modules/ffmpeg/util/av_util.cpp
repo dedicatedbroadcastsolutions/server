@@ -87,33 +87,59 @@ core::mutable_frame make_frame(void*                            tag,
                 if (source_channel_count <= 0 || audio->nb_samples <= 0)
                     return;
 
-                bool is_planar = av_sample_fmt_is_planar((AVSampleFormat)audio->format);
-                int bytes_per_sample = av_get_bytes_per_sample((AVSampleFormat)audio->format);
-                if (bytes_per_sample != sizeof(int32_t)) {
-                    // Unexpected format, skip copy
-                    return;
-                }
-
+                AVSampleFormat fmt = (AVSampleFormat)audio->format;
+                bool is_planar = av_sample_fmt_is_planar(fmt);
+                int bytes_per_sample = av_get_bytes_per_sample(fmt);
                 auto dst = frame.audio_data().data();
-                if (!is_planar) {
-                    // Packed: all channels interleaved in data[0]
-                    auto src = reinterpret_cast<const int32_t*>(audio->data[0]);
-                    int src_channels = source_channel_count;
-                    int copy_channels = std::min(channel_count, src_channels);
-                    for (int i = 0; i < audio->nb_samples; ++i) {
-                        for (int j = 0; j < copy_channels; ++j) {
-                            dst[i * channel_count + j] = src[i * src_channels + j];
+                int copy_channels = std::min(channel_count, source_channel_count);
+
+                if (fmt == AV_SAMPLE_FMT_S32 || fmt == AV_SAMPLE_FMT_S32P) {
+                    // 32-bit signed integer
+                    if (!is_planar) {
+                        auto src = reinterpret_cast<const int32_t*>(audio->data[0]);
+                        int src_channels = source_channel_count;
+                        for (int i = 0; i < audio->nb_samples; ++i) {
+                            for (int j = 0; j < copy_channels; ++j) {
+                                dst[i * channel_count + j] = src[i * src_channels + j];
+                            }
+                        }
+                    } else {
+                        for (int ch = 0; ch < copy_channels; ++ch) {
+                            auto src = reinterpret_cast<const int32_t*>(audio->data[ch]);
+                            for (int i = 0; i < audio->nb_samples; ++i) {
+                                dst[i * channel_count + ch] = src[i];
+                            }
+                        }
+                    }
+                } else if (fmt == AV_SAMPLE_FMT_FLT || fmt == AV_SAMPLE_FMT_FLTP) {
+                    // 32-bit float, convert to int32_t
+                    constexpr float scale = 2147483647.0f;
+                    if (!is_planar) {
+                        auto src = reinterpret_cast<const float*>(audio->data[0]);
+                        int src_channels = source_channel_count;
+                        for (int i = 0; i < audio->nb_samples; ++i) {
+                            for (int j = 0; j < copy_channels; ++j) {
+                                float sample = src[i * src_channels + j];
+                                // Clamp to [-1.0, 1.0] before scaling
+                                if (sample > 1.0f) sample = 1.0f;
+                                if (sample < -1.0f) sample = -1.0f;
+                                dst[i * channel_count + j] = static_cast<int32_t>(sample * scale);
+                            }
+                        }
+                    } else {
+                        for (int ch = 0; ch < copy_channels; ++ch) {
+                            auto src = reinterpret_cast<const float*>(audio->data[ch]);
+                            for (int i = 0; i < audio->nb_samples; ++i) {
+                                float sample = src[i];
+                                if (sample > 1.0f) sample = 1.0f;
+                                if (sample < -1.0f) sample = -1.0f;
+                                dst[i * channel_count + ch] = static_cast<int32_t>(sample * scale);
+                            }
                         }
                     }
                 } else {
-                    // Planar: each channel in data[c]
-                    int copy_channels = std::min(channel_count, source_channel_count);
-                    for (int ch = 0; ch < copy_channels; ++ch) {
-                        auto src = reinterpret_cast<const int32_t*>(audio->data[ch]);
-                        for (int i = 0; i < audio->nb_samples; ++i) {
-                            dst[i * channel_count + ch] = src[i];
-                        }
-                    }
+                    // Unsupported format, skip copy
+                    return;
                 }
             }
         });
