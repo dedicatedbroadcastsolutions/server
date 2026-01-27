@@ -557,15 +557,30 @@ struct Filter
         }
 
         if (media_type == AVMEDIA_TYPE_VIDEO) {
-            // List of allowed pixel formats as a string for FFmpeg 8+
-            const char* pix_fmts_str = "pix_fmts=rgb24|bgr24|bgra|argb|rgba|abgr|yuv444p|yuv444p10le|yuv444p12le|yuv422p|yuv422p10le|yuv422p12le|yuv420p|yuv420p10le|yuv420p12le|yuv410p|yuva444p|yuva422p|yuva420p|uyvy422|gbrp|gbrp10le|gbrp12le|gbrp16le|gbrap|gbrap16le";
+            // Use AVBufferSinkParams for FFmpeg 8+
+            static const AVPixelFormat pix_fmts[] = {
+                AV_PIX_FMT_RGB24, AV_PIX_FMT_BGR24, AV_PIX_FMT_BGRA, AV_PIX_FMT_ARGB, AV_PIX_FMT_RGBA, AV_PIX_FMT_ABGR,
+                AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUV444P10LE, AV_PIX_FMT_YUV444P12LE, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUV422P10LE,
+                AV_PIX_FMT_YUV422P12LE, AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV420P10LE, AV_PIX_FMT_YUV420P12LE, AV_PIX_FMT_YUV410P,
+                AV_PIX_FMT_YUVA444P, AV_PIX_FMT_YUVA422P, AV_PIX_FMT_YUVA420P, AV_PIX_FMT_UYVY422, AV_PIX_FMT_GBRP,
+                AV_PIX_FMT_GBRP10LE, AV_PIX_FMT_GBRP12LE, AV_PIX_FMT_GBRP16LE, AV_PIX_FMT_GBRAP, AV_PIX_FMT_GBRAP16LE, AV_PIX_FMT_NONE
+            };
+            AVBufferSinkParams* params = av_buffersink_params_alloc();
+            params->pixel_fmts = pix_fmts;
             FF(avfilter_graph_create_filter(
-                &sink, avfilter_get_by_name("buffersink"), "out", pix_fmts_str, nullptr, graph.get()));
+                &sink, avfilter_get_by_name("buffersink"), "out", nullptr, params, graph.get()));
+            av_freep(&params);
         } else if (media_type == AVMEDIA_TYPE_AUDIO) {
-            // Set sample_fmts and sample_rates at creation for FFmpeg 8+
-            std::string abuffersink_args = "sample_fmts=s32|sample_rates=" + std::to_string(format_desc.audio_sample_rate) + "|all_channel_counts=1";
+            // Use AVABufferSinkParams for FFmpeg 8+
+            static const AVSampleFormat sample_fmts[] = { AV_SAMPLE_FMT_S32, AV_SAMPLE_FMT_NONE };
+            static const int sample_rates[] = { format_desc.audio_sample_rate, -1 };
+            AVABufferSinkParams* params = av_abuffersink_params_alloc();
+            params->sample_fmts = sample_fmts;
+            params->sample_rates = sample_rates;
+            params->all_channel_counts = 1;
             FF(avfilter_graph_create_filter(
-                &sink, avfilter_get_by_name("abuffersink"), "out", abuffersink_args.c_str(), nullptr, graph.get()));
+                &sink, avfilter_get_by_name("abuffersink"), "out", nullptr, params, graph.get()));
+            av_freep(&params);
         } else {
             CASPAR_THROW_EXCEPTION(ffmpeg_error_t()
                                    << boost::errinfo_errno(EINVAL) << msg_info_t("invalid output media type"));
