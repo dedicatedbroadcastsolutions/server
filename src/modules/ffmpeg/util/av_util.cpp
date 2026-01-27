@@ -29,7 +29,10 @@ namespace caspar { namespace ffmpeg {
 
 std::shared_ptr<AVFrame> alloc_frame()
 {
-    const auto frame = std::shared_ptr<AVFrame>(av_frame_alloc(), [](AVFrame* ptr) { av_frame_free(&ptr); });
+    const auto frame = std::shared_ptr<AVFrame>(av_frame_alloc(), [](AVFrame* ptr) {
+        if (ptr) av_frame_unref(ptr);
+        av_frame_free(&ptr);
+    });
     if (!frame)
         FF_RET(AVERROR(ENOMEM), "av_frame_alloc");
     return frame;
