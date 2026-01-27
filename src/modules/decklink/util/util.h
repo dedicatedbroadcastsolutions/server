@@ -249,13 +249,13 @@ static std::wstring get_model_name(const T& device)
 {
     String pModelName;
     if (SUCCEEDED(device->GetModelName(&pModelName))) {
-        std::wstring result = to_string(pModelName);
+    std::wstring result = to_string(pModelName);
 #if defined(_MSC_VER)
-        ::SysFreeString(pModelName);
+    ::SysFreeString(pModelName);
 #else
-        // On Linux, DeckLinkAPI returns a const char*, which should not be freed by us.
+    free((void*)pModelName);
 #endif
-        return result;
+    return result;
     }
     return L"Unknown";
 }
