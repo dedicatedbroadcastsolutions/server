@@ -248,8 +248,15 @@ template <typename T>
 static std::wstring get_model_name(const T& device)
 {
     String pModelName;
-    if (SUCCEEDED(device->GetModelName(&pModelName)))
-        return to_string(pModelName);
+    if (SUCCEEDED(device->GetModelName(&pModelName))) {
+        std::wstring result = to_string(pModelName);
+#if defined(_MSC_VER)
+        ::SysFreeString(pModelName);
+#else
+        // On Linux, DeckLinkAPI returns a const char*, which should not be freed by us.
+#endif
+        return result;
+    }
     return L"Unknown";
 }
 
