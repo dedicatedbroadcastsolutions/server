@@ -187,11 +187,19 @@ struct Filter
                 const auto sar = boost::rational<int>(format_desc.square_width, format_desc.square_height) /
                                  boost::rational<int>(format_desc.width, format_desc.height);
 
+                // Determine colorspace and range
+                int colorspace = 1; // Default: bt709
+                int range = 1;      // Default: tv (mpeg)
+                core::color_space cs = get_color_space(video); // video is not in scope here, so fallback to format_desc
+                if (format_desc.colorspace == core::color_space::bt601) colorspace = 5;
+                else if (format_desc.colorspace == core::color_space::bt2020) colorspace = 9;
+                // TODO: If you have access to color range, set range = 2 for pc/full
+
                 auto args =
-                    (boost::format("video_size=%dx%d:pix_fmt=%d:time_base=%d/%d:sar=%d/%d:frame_rate=%d/%d") %
+                    (boost::format("video_size=%dx%d:pix_fmt=%d:time_base=%d/%d:sar=%d/%d:frame_rate=%d/%d:colorspace=%d:range=%d") %
                      dm->GetWidth() % dm->GetHeight() % pix_fmt % 1 % AV_TIME_BASE % sar.numerator() %
                      sar.denominator() % (timeScale / 1000 * (dm->GetFieldDominance() == bmdProgressiveFrame ? 1 : 2)) %
-                     (frameDuration / 1000))
+                     (frameDuration / 1000) % colorspace % range)
                         .str();
                 auto name = (boost::format("in_%d") % 0).str();
 
