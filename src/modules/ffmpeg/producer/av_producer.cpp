@@ -480,24 +480,34 @@ struct Filter
 
         // FFmpeg 8: Create sink filter and set options before parsing/creating other filters
         if (media_type == AVMEDIA_TYPE_VIDEO) {
-            static const AVPixelFormat pix_fmts[] = {
-                AV_PIX_FMT_RGB24, AV_PIX_FMT_BGR24, AV_PIX_FMT_BGRA, AV_PIX_FMT_ARGB, AV_PIX_FMT_RGBA, AV_PIX_FMT_ABGR,
-                AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUV444P10LE, AV_PIX_FMT_YUV444P12LE, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUV422P10LE,
-                AV_PIX_FMT_YUV422P12LE, AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV420P10LE, AV_PIX_FMT_YUV420P12LE, AV_PIX_FMT_YUV410P,
-                AV_PIX_FMT_YUVA444P, AV_PIX_FMT_YUVA422P, AV_PIX_FMT_YUVA420P, AV_PIX_FMT_UYVY422, AV_PIX_FMT_GBRP,
-                AV_PIX_FMT_GBRP10LE, AV_PIX_FMT_GBRP12LE, AV_PIX_FMT_GBRP16LE, AV_PIX_FMT_GBRAP, AV_PIX_FMT_GBRAP16LE, AV_PIX_FMT_NONE
+            // List of allowed pixel formats as strings
+            static const char* pix_fmt_names[] = {
+                "rgb24", "bgr24", "bgra", "argb", "rgba", "abgr",
+                "yuv444p", "yuv444p10le", "yuv444p12le", "yuv422p", "yuv422p10le",
+                "yuv422p12le", "yuv420p", "yuv420p10le", "yuv420p12le", "yuv410p",
+                "yuva444p", "yuva422p", "yuva420p", "uyvy422", "gbrp",
+                "gbrp10le", "gbrp12le", "gbrp16le", "gbrap", "gbrap16le"
             };
+            std::string pix_fmts_str;
+            for (size_t i = 0; i < sizeof(pix_fmt_names)/sizeof(*pix_fmt_names); ++i) {
+                if (i > 0) pix_fmts_str += ",";
+                pix_fmts_str += pix_fmt_names[i];
+            }
+            AVDictionary* options = nullptr;
+            av_dict_set(&options, "pix_fmts", pix_fmts_str.c_str(), 0);
             FF(avfilter_graph_create_filter(
-                &sink, avfilter_get_by_name("buffersink"), "out", nullptr, nullptr, graph.get()));
-            FF(av_opt_set_int_list(sink, "pix_fmts", pix_fmts, -1, AV_OPT_SEARCH_CHILDREN));
+                &sink, avfilter_get_by_name("buffersink"), "out", nullptr, options, graph.get()));
+            av_dict_free(&options);
         } else if (media_type == AVMEDIA_TYPE_AUDIO) {
-            static const AVSampleFormat sample_fmts[] = { AV_SAMPLE_FMT_S32, AV_SAMPLE_FMT_NONE };
+            static const char* sample_fmt_names[] = { "s32", nullptr };
             static const int sample_rates[] = { 44100, -1 };
+            AVDictionary* options = nullptr;
+            av_dict_set(&options, "sample_fmts", sample_fmt_names[0], 0);
+            av_dict_set(&options, "all_channel_counts", "1", 0);
+            av_dict_set(&options, "sample_rates", "44100", 0);
             FF(avfilter_graph_create_filter(
-                &sink, avfilter_get_by_name("abuffersink"), "out", nullptr, nullptr, graph.get()));
-            FF(av_opt_set_int_list(sink, "sample_fmts", sample_fmts, -1, AV_OPT_SEARCH_CHILDREN));
-            FF(av_opt_set_int(sink, "all_channel_counts", 1, AV_OPT_SEARCH_CHILDREN));
-            FF(av_opt_set_int_list(sink, "sample_rates", sample_rates, -1, AV_OPT_SEARCH_CHILDREN));
+                &sink, avfilter_get_by_name("abuffersink"), "out", nullptr, options, graph.get()));
+            av_dict_free(&options);
         } else {
             CASPAR_THROW_EXCEPTION(ffmpeg_error_t()
                                    << boost::errinfo_errno(EINVAL) << msg_info_t("invalid output media type"));
