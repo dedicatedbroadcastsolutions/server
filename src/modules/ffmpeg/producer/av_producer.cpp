@@ -549,9 +549,9 @@ struct Filter
                 auto st = it->second.ctx;
 
                 if (st->codec_type == AVMEDIA_TYPE_VIDEO) {
-                    auto args = (boost::format("video_size=%dx%d:pix_fmt=%d:time_base=%d/%d") % st->width % st->height %
-                                 st->pix_fmt % st->pkt_timebase.num % st->pkt_timebase.den)
-                                    .str();
+                          auto args = (boost::format("video_size=%dx%d:pix_fmt=%d:time_base=%d/%d:colorspace=bt709:range=tv") % st->width % st->height %
+                                            st->pix_fmt % st->pkt_timebase.num % st->pkt_timebase.den)
+                                                .str();
                     auto name = (boost::format("in_%d") % index).str();
 
                     if (st->sample_aspect_ratio.num > 0 && st->sample_aspect_ratio.den > 0) {
