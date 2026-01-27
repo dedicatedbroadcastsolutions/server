@@ -212,10 +212,12 @@ struct Filter
                                                             << msg_info_t("only single audio input supported"));
                 }
 
-                auto args = (boost::format("time_base=%d/%d:sample_rate=%d:sample_fmt=%s:channel_layout=%#x") % 1 %
-                             format_desc.audio_sample_rate % format_desc.audio_sample_rate % AV_SAMPLE_FMT_S32 %
-                             ffmpeg::get_channel_layout_mask_for_channels(format_desc.audio_channels))
-                                .str();
+                char channel_layout[128];
+                av_channel_layout_default((AVChannelLayout*)channel_layout, format_desc.audio_channels);
+                av_channel_layout_describe((AVChannelLayout*)channel_layout, channel_layout, sizeof(channel_layout));
+                const char* sample_fmt_name = av_get_sample_fmt_name(AV_SAMPLE_FMT_S32);
+                auto args = (boost::format("time_base=%d/%d:sample_rate=%d:sample_fmt=%s:channel_layout=%s")
+                             % 1 % format_desc.audio_sample_rate % format_desc.audio_sample_rate % sample_fmt_name % channel_layout).str();
                 auto name = (boost::format("in_%d") % 0).str();
 
                 FF(avfilter_graph_create_filter(
