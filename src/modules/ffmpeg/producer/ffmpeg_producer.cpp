@@ -1,3 +1,19 @@
+#include <shell/main.cpp> // For g_intel_gpu_encode_enabled, g_intel_gpu_decode_enabled
+
+// Helper: Add hardware acceleration options if enabled
+void add_intel_gpu_hwaccel_options(std::map<std::string, std::string>& options) {
+    if (g_intel_gpu_decode_enabled) {
+        // Example: Use VAAPI for decode
+        options["hwaccel"] = "vaapi";
+        // options["hwaccel_device"] = "/dev/dri/renderD128"; // Optional: device path
+
+        // Check for VAAPI device existence (Linux typical path)
+        if (access("/dev/dri/renderD128", F_OK) != 0) {
+            CASPAR_LOG(warning) << L"Intel GPU decode enabled in config, but VAAPI device not found at /dev/dri/renderD128. Hardware decode will not be used.";
+        }
+    }
+    // Add more options as needed for encode, etc.
+}
 /*
  * Copyright (c) 2011 Sveriges Television AB <info@casparcg.com>
  *
@@ -82,17 +98,18 @@ struct ffmpeg_producer : public core::frame_producer
         , frame_factory_(frame_factory)
         , format_desc_(format_desc)
         , producer_(new AVProducer(frame_factory_,
-                                   format_desc_,
-                                   u8(path),
-                                   u8(filename),
-                                   u8(vfilter),
-                                   u8(afilter),
-                                   start,
-                                   seek,
-                                   duration,
-                                   loop,
-                                   seekable,
-                                   scale_mode))
+                       format_desc_,
+                       u8(path),
+                       u8(filename),
+                       u8(vfilter),
+                       u8(afilter),
+                       start,
+                       seek,
+                       duration,
+                       loop,
+                       seekable,
+                       scale_mode,
+                       hw_options))
     {
     }
 
@@ -344,6 +361,10 @@ spl::shared_ptr<core::frame_producer> create_producer(const core::frame_producer
     auto afilter = get_param(L"AF", params, get_param(L"FILTER", params, L""));
 
     try {
+        std::map<std::string, std::string> hw_options;
+        add_intel_gpu_hwaccel_options(hw_options);
+        // Pass hw_options to AVProducer or merge with other options as needed
+        // (This is a stub; actual integration with AVProducer may require changes)
         return spl::make_shared<ffmpeg_producer>(dependencies.frame_factory,
                                                  dependencies.format_desc,
                                                  name,

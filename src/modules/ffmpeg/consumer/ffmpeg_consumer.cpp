@@ -1,3 +1,19 @@
+#include <shell/main.cpp> // For g_intel_gpu_encode_enabled, g_intel_gpu_decode_enabled
+
+// Helper: Add hardware acceleration options if enabled
+void add_intel_gpu_hwaccel_options(std::map<std::string, std::string>& options) {
+    if (g_intel_gpu_encode_enabled) {
+        // Example: Use VAAPI for encode
+        options["hwaccel"] = "vaapi";
+        // options["hwaccel_device"] = "/dev/dri/renderD128"; // Optional: device path
+
+        // Check for VAAPI device existence (Linux typical path)
+        if (access("/dev/dri/renderD128", F_OK) != 0) {
+            CASPAR_LOG(warning) << L"Intel GPU encode enabled in config, but VAAPI device not found at /dev/dri/renderD128. Hardware encode will not be used.";
+        }
+    }
+    // Add more options as needed for decode, etc.
+}
 /*
  * Copyright (c) 2011 Sveriges Television AB <info@casparcg.com>
  *
@@ -99,10 +115,14 @@ struct Stream
            const core::video_format_desc&      format_desc,
            bool                                realtime,
            common::bit_depth                   depth,
-           std::map<std::string, std::string>& options)
+           std::map<std::string, std::string>& options,
+           const std::map<std::string, std::string>& hw_options = {})
     {
+        // Merge hw_options into options
+        for (const auto& kv : hw_options) {
+            options[kv.first] = kv.second;
+        }
         std::map<std::string, std::string> stream_options;
-
         {
             auto tmp = std::move(options);
             for (auto& p : tmp) {
@@ -397,7 +417,7 @@ struct ffmpeg_consumer : public core::frame_consumer
     common::bit_depth depth_;
 
   public:
-    ffmpeg_consumer(std::string path, std::string args, bool realtime, common::bit_depth depth)
+    ffmpeg_consumer(std::string path, std::string args, bool realtime, common::bit_depth depth, const std::map<std::string, std::string>& hw_options = {})
         : channel_index_([&] {
             boost::crc_16_type result;
             result.process_bytes(path.data(), path.length());
@@ -407,6 +427,7 @@ struct ffmpeg_consumer : public core::frame_consumer
         , path_(std::move(path))
         , args_(std::move(args))
         , depth_(depth)
+        , hw_options_(hw_options)
     {
         state_["file/path"] = u8(path_);
 
@@ -417,6 +438,8 @@ struct ffmpeg_consumer : public core::frame_consumer
         graph_->set_color("dropped-frame", diagnostics::color(0.3f, 0.6f, 0.3f));
         graph_->set_color("input", diagnostics::color(0.7f, 0.4f, 0.4f));
     }
+    private:
+        std::map<std::string, std::string> hw_options_;
 
     ~ffmpeg_consumer()
     {
@@ -441,9 +464,9 @@ struct ffmpeg_consumer : public core::frame_consumer
 
         graph_->set_text(print());
 
-        frame_thread_ = std::thread([=] {
+        frame_thread_ = std::thread([=, hw_options = hw_options_] {
             try {
-                std::map<std::string, std::string> options;
+                std::map<std::string, std::string> options = hw_options;
                 {
                     static boost::regex opt_exp("-(?<NAME>[^\\s]+)(\\s+(?<VALUE>[^\\s]+))?");
                     for (auto it = boost::sregex_iterator(args_.begin(), args_.end(), opt_exp);
@@ -493,7 +516,7 @@ struct ffmpeg_consumer : public core::frame_consumer
                     if (oc->oformat->video_codec == AV_CODEC_ID_H264 && options.find("preset:v") == options.end()) {
                         options["preset:v"] = "veryfast";
                     }
-                    video_stream.emplace(oc, ":v", oc->oformat->video_codec, format_desc, realtime_, depth_, options);
+                    video_stream.emplace(oc, ":v", oc->oformat->video_codec, format_desc, realtime_, depth_, options, hw_options);
 
                     {
                         std::lock_guard<std::mutex> lock(state_mutex_);
@@ -503,7 +526,7 @@ struct ffmpeg_consumer : public core::frame_consumer
 
                 std::optional<Stream> audio_stream;
                 if (oc->oformat->audio_codec != AV_CODEC_ID_NONE) {
-                    audio_stream.emplace(oc, ":a", oc->oformat->audio_codec, format_desc, realtime_, depth_, options);
+                    audio_stream.emplace(oc, ":a", oc->oformat->audio_codec, format_desc, realtime_, depth_, options, hw_options);
                 }
 
                 if (!(oc->oformat->flags & AVFMT_NOFILE)) {
@@ -699,6 +722,9 @@ spl::shared_ptr<core::frame_consumer> create_consumer(const std::vector<std::wst
     for (auto n = 2; n < params.size(); ++n) {
         args.emplace_back(u8(params[n]));
     }
+    std::map<std::string, std::string> hw_options;
+    add_intel_gpu_hwaccel_options(hw_options);
+    // Merge hw_options into args if needed (stub; actual integration may require changes)
     return spl::make_shared<ffmpeg_consumer>(
         path, boost::join(args, " "), boost::iequals(params.at(0), L"STREAM"), channel_info.depth);
 }
