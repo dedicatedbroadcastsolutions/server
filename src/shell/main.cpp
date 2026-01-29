@@ -1,3 +1,27 @@
+#include <atomic>
+#include <iostream>
+#include <string>
+
+// FFmpeg headers for hardware detection (stubs, actual includes may differ)
+#include <libavutil/hwcontext.h>
+#include <libavcodec/avcodec.h>
+
+// Global flags for Intel GPU acceleration features (config-driven)
+#include "intel_gpu_flags.h"
+bool g_intel_gpu_encode_enabled = false;
+bool g_intel_gpu_decode_enabled = false;
+bool g_intel_gpu_render_enabled = false;
+
+// Parse <intel-gpu> config options from env::properties()
+void setup_intel_gpu_accel_flags() {
+    g_intel_gpu_encode_enabled = env::properties().get(L"configuration.intel-gpu.enable-encode", false);
+    g_intel_gpu_decode_enabled = env::properties().get(L"configuration.intel-gpu.enable-decode", false);
+    g_intel_gpu_render_enabled = env::properties().get(L"configuration.intel-gpu.enable-render", false);
+
+    CASPAR_LOG(info) << L"Intel GPU encode enabled (config): " << g_intel_gpu_encode_enabled;
+    CASPAR_LOG(info) << L"Intel GPU decode enabled (config): " << g_intel_gpu_decode_enabled;
+    CASPAR_LOG(info) << L"Intel GPU render enabled (config): " << g_intel_gpu_render_enabled;
+}
 /*
  * Copyright (c) 2011 Sveriges Television AB <info@casparcg.com>
  *
@@ -241,6 +265,9 @@ int main(int argc, char** argv)
                 std::wcout << L"Failed to set log level [" << target_level << L"]" << std::endl;
             }
         }
+
+        // Intel GPU and FFmpeg hardware acceleration detection and config
+        setup_intel_gpu_accel_flags();
 
         if (env::properties().get(L"configuration.debugging.remote", false))
             wait_for_remote_debugging();

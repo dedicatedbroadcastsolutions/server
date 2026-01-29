@@ -1,4 +1,4 @@
-#include <shell/main.cpp> // For g_intel_gpu_encode_enabled, g_intel_gpu_decode_enabled
+#include <shell/intel_gpu_flags.h>
 
 // Helper: Add hardware acceleration options if enabled
 void add_intel_gpu_hwaccel_options(std::map<std::string, std::string>& options) {
